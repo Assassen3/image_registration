@@ -55,7 +55,7 @@ ne.plot.slices(images, titles=titles, cmaps=['gray'], do_colorbars=True)
 
 nb_epochs = 10
 steps_per_epoch = 100
-hist = vxm_model.fit_generator(dg, epochs=nb_epochs, steps_per_epoch=steps_per_epoch, verbose=2)
+hist = vxm_model.fit(dg, epochs=nb_epochs, steps_per_epoch=steps_per_epoch, verbose=2)
 
 
 def plot_history(hist, loss_name='loss'):
