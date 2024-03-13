@@ -1,4 +1,5 @@
 from PIL import Image
+from matplotlib import pyplot as plt
 
 
 def blend_images(image_path1, image_path2, output_path, alpha=0.5):
@@ -22,13 +23,15 @@ def blend_images(image_path1, image_path2, output_path, alpha=0.5):
     point2 = [93, 128, 276, 198]
     resized_image = image2.resize((int(width2 / (point2[2] - point2[0]) * (point1[2] - point1[0])),
                                    int(height2 / (point2[3] - point2[1]) * (point1[3] - point1[1]))))
+    print("resize: " + str(int(width2 / (point2[2] - point2[0]) * (point1[2] - point1[0]))) + ', ' + str(
+        int(height2 / (point2[3] - point2[1]) * (point1[3] - point1[1]))))
     # 创建一个新的透明背景图片，尺寸等于两张图片的最大宽度和高度
     point3 = [int(point2[0] / (point2[2] - point2[0]) * (point1[2] - point1[0])),
               int(point2[1] / (point2[3] - point2[1]) * (point1[3] - point1[1]))]
 
     result_image = Image.new('RGBA', (width1, height1), (0, 0, 0, 0))
     result_image.paste(resized_image, (point1[0] - point3[0], point1[1] - point3[1]))
-
+    print("box: " + str(point1[0] - point3[0]) + ',' + str(point1[1] - point3[1]))
     # 按照指定的透明度混合图片
     blended_image = Image.blend(image1, result_image, alpha=alpha)
 

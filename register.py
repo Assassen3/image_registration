@@ -1,74 +1,82 @@
-#!/usr/bin/env python
-
-"""
-Example script to register two volumes with VoxelMorph models.
-
-Please make sure to use trained models appropriately. Let's say we have a model trained to register
-a scan (moving) to an atlas (fixed). To register a scan to the atlas and save the warp field, run:
-
-    register.py --moving moving.nii.gz --fixed fixed.nii.gz --model model.h5
-        --moved moved.nii.gz --warp warp.nii.gz
-
-The source and target input images are expected to be affinely registered.
-
-If you use this code, please cite the following, and read function docs for further info/citations
-    VoxelMorph: A Learning Framework for Deformable Medical Image Registration
-    G. Balakrishnan, A. Zhao, M. R. Sabuncu, J. Guttag, A.V. Dalca.
-    IEEE TMI: Transactions on Medical Imaging. 38(8). pp 1788-1800. 2019.
-
-Copyright 2020 Adrian V. Dalca
-
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in
-compliance with the License. You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software distributed under the License is
-distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-implied. See the License for the specific language governing permissions and limitations under the
-License.
-"""
-
 import os
-import argparse
+
+import matplotlib.pyplot as plt
+import neurite as ne
 import numpy as np
 import voxelmorph as vxm
-import tensorflow as tf
+from skimage import io
+from tqdm import tqdm
+
+from data_generator import data_generator
+
+data_path = "data/tomato_modified"
+filenames = [f for f in os.listdir(data_path) if f.endswith("ms.png")]
+load_bar = tqdm(total=len(filenames), unit='image')
+data = np.zeros((len(filenames), 2, 192, 384))
+for num, filename in enumerate(filenames):
+    img_ms = io.imread(data_path + "/" + filename, as_gray=True)
+    img_rgb = io.imread(data_path + "/" + filename[:-6] + "rgb.png", as_gray=True)
+    img_ms = np.array(img_ms)
+    img_rgb = np.array(img_rgb)
+    img_ms = img_ms.astype('float') / 255
+    data[num, 0] = img_ms
+    data[num, 1] = img_rgb
+    load_bar.update(1)
+    load_bar.set_postfix({"Image": filename})
+
+load_bar.close()
+
+nb_features = [
+    [32, 32, 32, 32],  # encoder features
+    [32, 32, 32, 32, 32, 16]  # decoder features
+]
+# build model using VxmDense
+inshape = data.shape[2:]
+
+train_generator = data_generator(data)
+
+vxm_model = vxm.networks.VxmDense(inshape, nb_features, int_steps=0)
+
+# voxelmorph has a variety of custom loss classes
+losses = [vxm.losses.MSE().loss, vxm.losses.Grad('l2').loss]
+
+# usually, we have to balance the two losses by a hyper-parameter
+lambda_param = 0.05
+loss_weights = [1, lambda_param]
+
+vxm_model.compile(optimizer='Adam', loss=losses, loss_weights=loss_weights)
+
+# let's test it
+
+in_sample, out_sample = next(train_generator)
+
+# visualize
+images = [img[0, :, :, 0] for img in in_sample + out_sample]
+titles = ['moving', 'fixed', 'moved ground-truth (fixed)', 'zeros']
+ne.plot.slices(images, titles=titles, cmaps=['gray'], do_colorbars=True)
+
+nb_epochs = 10
+steps_per_epoch = 100
+hist = vxm_model.fit(train_generator, epochs=nb_epochs, steps_per_epoch=steps_per_epoch, verbose=2)
 
 
-# parse commandline args
-parser = argparse.ArgumentParser()
-parser.add_argument('--moving', required=True, help='moving image (source) filename')
-parser.add_argument('--fixed', required=True, help='fixed image (target) filename')
-parser.add_argument('--moved', required=True, help='warped image output filename')
-parser.add_argument('--model', required=True, help='keras model for nonlinear registration')
-parser.add_argument('--warp', help='output warp deformation filename')
-parser.add_argument('-g', '--gpu', help='GPU number(s) - if not supplied, CPU is used')
-parser.add_argument('--multichannel', action='store_true',
-                    help='specify that data has multiple channels')
-args = parser.parse_args()
+def plot_history(hist, loss_name='loss'):
+    # Simple function to plot training history.
+    plt.figure()
+    plt.plot(hist.epoch, hist.history[loss_name], '.-')
+    plt.ylabel('loss')
+    plt.xlabel('epoch')
+    plt.show()
 
-# tensorflow device handling
-device, nb_devices = vxm.tf.utils.setup_device(args.gpu)
 
-# load moving and fixed images
-add_feat_axis = not args.multichannel
-moving = vxm.py.utils.load_volfile(args.moving, add_batch_axis=True, add_feat_axis=add_feat_axis)
-fixed, fixed_affine = vxm.py.utils.load_volfile(
-    args.fixed, add_batch_axis=True, add_feat_axis=add_feat_axis, ret_affine=True)
+plot_history(hist)
 
-inshape = moving.shape[1:-1]
-nb_feats = moving.shape[-1]
-
-with tf.device(device):
-    # load model and predict
-    config = dict(inshape=inshape, input_model=None)
-    warp = vxm.networks.VxmDense.load(args.model, **config).register(moving, fixed)
-    moved = vxm.networks.Transform(inshape, nb_feats=nb_feats).predict([moving, warp])
-
-# save warp
-if args.warp:
-    vxm.py.utils.save_volfile(warp.squeeze(), args.warp, fixed_affine)
-
-# save moved image
-vxm.py.utils.save_volfile(moved.squeeze(), args.moved, fixed_affine)
+# let's get some data
+val_generator = data_generator(data, batch_size=1)
+val_input, _ = next(val_generator)
+val_pred = vxm_model.predict(val_input)
+# visualize
+images = [img[0, :, :, 0] for img in val_input + val_pred]
+titles = ['moving', 'fixed', 'moved', 'flow']
+ne.plot.slices(images, titles=titles, cmaps=['gray'], do_colorbars=True)
+ne.plot.flow([val_pred[1].squeeze()], width=5)
