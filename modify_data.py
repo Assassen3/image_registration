@@ -7,10 +7,10 @@ import matplotlib.pyplot as plt
 input_dir = ".\\data\\tomato"
 
 # 指定输出图片的目录
-output_dir = ".\\data\\tomato_modified"
+output_dir = ".\\data\\tomato_modified2"
 
 # 指定目标分辨率
-target_size = (384, 192)
+target_size = (256, 256)
 
 # 获取输入目录中的所有图片文件
 image_files_ms = [f for f in os.listdir(input_dir) if f.endswith("ms.png")]
