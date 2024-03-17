@@ -40,7 +40,7 @@ def feature_based_registration(moving_image, fixed_image):
     # 应用透视变换进行图像配准
 
 
-data = load_data.load_data(100)
+data, filenames = load_data.load_data()
 
 bar = tqdm.tqdm(total=data.shape[0])
 # 读取图像
@@ -53,6 +53,6 @@ for i in range(data.shape[0]):
 
     registered_image = feature_based_registration(moving_image, fixed_image)
     if registered_image is not None:
-        cv2.imwrite('./results/sift/' + str(i) + '.png', registered_image)
+        cv2.imwrite('./results/sift/' + filenames[i], registered_image)
     bar.update(1)
 bar.close()

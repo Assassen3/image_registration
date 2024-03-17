@@ -10,7 +10,7 @@ import cv2
 import load_data
 from data_generator import data_generator_predict
 
-data = load_data.load_data()
+data, _ = load_data.load_data(20)
 
 # nb_features = [
 #     [64, 64, 64, 64],  # encoder features
@@ -48,7 +48,14 @@ for num, _ in enumerate(val_pred[0]):
     warped_moving_image = val_pred[0][num, ..., 0]  # 变形后的 moving 图像
     displacement_field = val_pred[1][num, ...]  # 变形场
 
-    plt.imsave('./results/tomato4/' + str(num) + '.png', warped_moving_image, cmap='gray')
+    # plt.imsave('./results/tomato4/' + str(num) + '.png', warped_moving_image, cmap='gray')
     bar.update(1)
 
+# #显示图用
+# for i in range(val_pred[0].shape[0]):
+#     images = [img[i, :, :, 0] for img in val_input + val_pred]
+#     titles = ['moving', 'fixed', 'moved', 'flow']
+#     ne.plot.slices(images, titles=titles, cmaps=['gray'], do_colorbars=True)
+#     flow = val_pred[1][np.newaxis, i, ...]
+#     ne.plot.flow([flow.squeeze()], width=5)
 

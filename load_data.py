@@ -12,6 +12,7 @@ def load_data(load_num=0):
     load_bar = tqdm(total=load_num, unit='image')
     # data = np.zeros((load_num, 2, 192, 384))
     data = np.zeros((load_num, 2, 256, 256))
+    data_file_name = []
     for num, filename in enumerate(filenames[:load_num]):
         img_ms = io.imread(data_path + "/" + filename, as_gray=True)
         img_rgb = io.imread(data_path + "/" + filename[:-6] + "rgb.png", as_gray=True)
@@ -22,7 +23,8 @@ def load_data(load_num=0):
         data[num, 1] = img_rgb
         load_bar.update(1)
         load_bar.set_postfix({"Image": filename})
+        data_file_name.append(filename)
         if num == load_num:
             break
     load_bar.close()
-    return data
+    return data, data_file_name

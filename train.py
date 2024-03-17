@@ -10,7 +10,7 @@ import load_data
 
 from data_generator import data_generator
 
-data = load_data.load_data()
+data, _ = load_data.load_data()
 
 # nb_features = [
 #     [64, 64, 64, 64],  # encoder features
