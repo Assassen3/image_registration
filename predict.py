@@ -12,14 +12,14 @@ from data_generator import data_generator_predict
 
 data, _ = load_data.load_data(20)
 
-# nb_features = [
-#     [64, 64, 64, 64],  # encoder features
-#     [64, 64, 64, 64, 64, 32]  # decoder features
-# ]
 nb_features = [
-    [128, 128, 256, 256, 256],  # encoder features
-    [256, 256, 128, 128, 64, 32]  # decoder features
+    [64, 64, 64, 64],  # encoder features
+    [64, 64, 64, 64, 64, 32]  # decoder features
 ]
+# nb_features = [
+#     [128, 128, 256, 256, 256],  # encoder features
+#     [256, 256, 128, 128, 64, 32]  # decoder features
+# ]
 # build model using VxmDense
 inshape = data.shape[2:]
 

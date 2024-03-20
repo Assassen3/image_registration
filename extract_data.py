@@ -14,5 +14,7 @@ for date in date_list:
             if os.path.isdir(n_path) and n.isdigit():
                 ms_image = os.path.join(n_path, "msi_reflectance\\part1.png")
                 rbg_image = os.path.join(n_path, n + "_color_uint8.png")
+                depth_image = os.path.join(n_path, n + "_depth_uint16.png")
                 shutil.copy(ms_image, os.path.join(dst_path, date + "_" + pos + "_" + n + '_ms.png'))
                 shutil.copy(rbg_image, os.path.join(dst_path, date + "_" + pos + "_" + n + '_rgb.png'))
+                shutil.copy(depth_image, os.path.join(dst_path, date + "_" + pos + "_" + n + '_depth.png'))

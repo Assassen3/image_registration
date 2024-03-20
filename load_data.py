@@ -6,25 +6,29 @@ import os
 
 def load_data(load_num=0):
     print('Loading data...')
-    data_path = "data/tomato_modified2"
-    filenames = [f for f in os.listdir(data_path) if f.endswith("ms.png")]
+    data_path = "data/tomato_modified"
+    filenames = [f[:-6] for f in os.listdir(data_path) if f.endswith("ms.png")]
     load_num = len(filenames) if load_num == 0 else load_num
     load_bar = tqdm(total=load_num, unit='image')
-    # data = np.zeros((load_num, 2, 192, 384))
-    data = np.zeros((load_num, 2, 256, 256))
+    shape = io.imread(os.path.join(data_path, filenames[0] + 'ms.png'), as_gray=True).shape
+    data = np.zeros((load_num, 3, *shape))
     data_file_name = []
-    for num, filename in enumerate(filenames[:load_num]):
-        img_ms = io.imread(data_path + "/" + filename, as_gray=True)
-        img_rgb = io.imread(data_path + "/" + filename[:-6] + "rgb.png", as_gray=True)
+    load_index = np.random.randint(0, len(filenames), size=load_num)
+    for i, num in enumerate(load_index):
+        filename = filenames[num]
+        img_ms = io.imread(data_path + "/" + filename + 'ms.png', as_gray=True)
+        img_rgb = io.imread(data_path + "/" + filename + "rgb.png", as_gray=True)
+        img_d = io.imread(data_path + "/" + filename + "depth.png")
         img_ms = np.array(img_ms)
         img_rgb = np.array(img_rgb)
+        img_d = np.array(img_d)
         img_ms = img_ms.astype('float') / 255
-        data[num, 0] = img_ms
-        data[num, 1] = img_rgb
+        data[i, 0] = img_ms
+        data[i, 1] = img_rgb
+        data[i, 2] = img_d
         load_bar.update(1)
         load_bar.set_postfix({"Image": filename})
         data_file_name.append(filename)
-        if num == load_num:
-            break
+
     load_bar.close()
     return data, data_file_name
