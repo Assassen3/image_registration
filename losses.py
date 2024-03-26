@@ -1,4 +1,7 @@
 import tensorflow as tf
+import numpy as np
+from scipy.ndimage import gaussian_filter
+import cv2
 
 
 class StructuralSimilarityLoss(tf.keras.losses.Loss):
@@ -25,9 +28,14 @@ class DiffusionRegularLoss(tf.keras.losses.Loss):
         dy2, dyx = tf.image.image_gradients(dy)
         dxy, dx2 = tf.image.image_gradients(dx)
 
-        loss = (tf.reduce_mean(tf.square(dy), axis=[1, 2, 3]) + tf.reduce_mean(tf.square(dx), axis=[1, 2, 3])
-                + tf.reduce_mean(tf.square(dy2), axis=[1, 2, 3]) + tf.reduce_mean(tf.square(dyx), axis=[1, 2, 3])
-                + tf.reduce_mean(tf.square(dxy), axis=[1, 2, 3]) + tf.reduce_mean(tf.square(dx2), axis=[1, 2, 3]))
+        dy = tf.reduce_mean(tf.square(dy), axis=[1, 2, 3])
+        dx = tf.reduce_mean(tf.square(dx), axis=[1, 2, 3])
+        dy2 = tf.reduce_mean(tf.square(dy2), axis=[1, 2, 3])
+        dyx = tf.reduce_mean(tf.square(dyx), axis=[1, 2, 3])
+        dxy = tf.reduce_mean(tf.square(dxy), axis=[1, 2, 3])
+        dx2 = tf.reduce_mean(tf.square(dx2), axis=[1, 2, 3])
+
+        loss = dy + dx + dy2 + dyx + dxy + dx2
 
         return loss
 
@@ -46,24 +54,39 @@ class DepthDeformationLoss(tf.keras.losses.Loss):
             if not tf.is_tensor(deformation_field) else deformation_field
 
         # 获取有效深度值的掩码
-        valid_depth_mask = tf.cast(tf.not_equal(depth_map, 0.0), tf.float32)
+        valid_depth_mask = tf.not_equal(depth_map, 0.0)
 
-        # 计算深度图的梯度
-        depth_grad_y, depth_grad_x = tf.image.image_gradients(depth_map)
-
-        # 计算变形场的梯度
-        def_grad_yy, def_grad_yx = tf.image.image_gradients(deformation_field[..., 0, tf.newaxis])
-        def_grad_xy, def_grad_xx = tf.image.image_gradients(deformation_field[..., 1, tf.newaxis])
-
-        # 计算深度图梯度和变形场梯度之间的差异
-        diff_y = tf.square(depth_grad_y - def_grad_yy) + tf.square(depth_grad_y - def_grad_xy)
-        diff_x = tf.square(depth_grad_x - def_grad_yx) + tf.square(depth_grad_x - def_grad_xx)
-
-        # 应用有效深度值掩码
-        masked_diff_y = diff_y * valid_depth_mask
-        masked_diff_x = diff_x * valid_depth_mask
-
-        # 计算损失
-        loss = tf.reduce_mean(masked_diff_y, axis=[1, 2, 3]) + tf.reduce_mean(masked_diff_x, axis=[1, 2, 3])
+        loss = self.dssim(depth_map, deformation_field, valid_depth_mask)
 
         return loss
+
+    def dssim(self, img1, img2, mask, k1=0.01, k2=0.03, win_size=11, L=1):
+        img2 = tf.sqrt(tf.reduce_sum(tf.square(img2), axis=-1)[..., tf.newaxis])
+        half_win = win_size // 2
+
+        paddings = tf.constant([[0, 0], [half_win, half_win], [half_win, half_win], [0, 0]])
+        # 对图像进行填充，使得可以对边缘像素进行处理
+        pad_img1 = tf.pad(img1, paddings, mode='reflect')
+        pad_img2 = tf.pad(img2, paddings, mode='reflect')
+        pad_mask = tf.cast(tf.pad(mask, paddings, mode='CONSTANT'), tf.float32)
+        dfilter = tf.constant(np.ones([win_size, win_size])[..., np.newaxis, np.newaxis], dtype=tf.float32)
+        masked = tf.nn.conv2d(pad_mask, dfilter, strides=[1, 1, 1, 1], padding='VALID')
+
+        mu1 = tf.nn.conv2d(pad_img1, dfilter, strides=[1, 1, 1, 1], padding='VALID')
+        mu2 = tf.nn.conv2d(pad_img2, dfilter, strides=[1, 1, 1, 1], padding='VALID')
+        mu1_sq = mu1 ** 2
+        mu2_sq = mu2 ** 2
+        mu1_mu2 = mu1 * mu2
+        sigma1_sq = tf.nn.conv2d(pad_img1 ** 2, dfilter, strides=[1, 1, 1, 1], padding='VALID')
+        sigma2_sq = tf.nn.conv2d(pad_img2 ** 2, dfilter, strides=[1, 1, 1, 1], padding='VALID')
+        sigma12 = tf.nn.conv2d(pad_img1 * pad_img2, dfilter, strides=[1, 1, 1, 1], padding='VALID')
+
+        # 计算SSIM图
+        c1 = (k1 * L) ** 2
+        c2 = (k2 * L) ** 2
+        ssim_map = ((2 * mu1_mu2 + c1) * (2 * sigma12 + c2)) / ((mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2))
+        masked = tf.cast(tf.less(masked, 100), tf.float32)
+        # 计算平均SSIM值
+        mssim = ssim_map * masked
+
+        return mssim

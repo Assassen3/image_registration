@@ -133,7 +133,7 @@ class SpatialTransformer(tf.keras.layers.Layer):
         batch_indices = tf.tile(batch_indices, [1, height, width])
         batch_indices = tf.expand_dims(batch_indices, axis=-1)
 
-        last_indices = tf.ones([batch_size, height, width, 1], dtype=tf.int32)
+        last_indices = tf.zeros([batch_size, height, width, 1], dtype=tf.int32)
 
         indices_a = tf.concat([batch_indices, y0, x0, last_indices], axis=-1)
         indices_b = tf.concat([batch_indices, y0, x1, last_indices], axis=-1)
@@ -145,7 +145,6 @@ class SpatialTransformer(tf.keras.layers.Layer):
         pixel_values_c = tf.expand_dims(tf.gather_nd(src, indices_c), axis=-1)
         pixel_values_d = tf.expand_dims(tf.gather_nd(src, indices_d), axis=-1)
 
-        # Perform interpolation
         warped_image = wa * pixel_values_a + wb * pixel_values_b + wc * pixel_values_c + wd * pixel_values_d
 
         return warped_image
@@ -164,4 +163,3 @@ class DNet(tf.keras.Model):
         flow = self.unet(tf.concat([moving, fixed, depth], axis=3))
         moved_image = self.stn.call([moving, flow])
         return moved_image, flow, flow
-

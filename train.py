@@ -1,51 +1,27 @@
-import matplotlib.pyplot as plt
-import neurite as ne
-import voxelmorph as vxm
 import load_data
 from data_generator import data_generator
+from model import DNet
+from losses import *
+from callbacks import DCallback
+from visualize import plot_history
 
-data, _ = load_data.load_data(200)
+data, filenames = load_data.load_data()
+train_generator = data_generator(data, batch_size=10)
 
-# nb_features = [
-#     [64, 64, 64, 64],  # encoder features
-#     [64, 64, 64, 64, 64, 32]  # decoder features
-# ]
-nb_features = [
-    [128, 128, 256, 256, 256],  # encoder features
-    [256, 256, 128, 128, 64, 32]  # decoder features
-]
-inshape = data.shape[2:]
+dnet = DNet()
+losses = [StructuralSimilarityLoss(), DiffusionRegularLoss(), DepthDeformationLoss()]
+loss_weights = [1, 0.3, 2.5]
 
-train_generator = data_generator(data, batch_size=25)
+dnet.compile(optimizer='Adam', loss=losses, loss_weights=loss_weights)
 
-vxm_model = vxm.networks.VxmDense(inshape, nb_features, int_steps=0)
+nb_epochs = 30
+steps_per_epoch = 200
+checkpoint_path = "./weights/{epoch:02d}-{loss:.2f}/weights"
 
-losses = [vxm.losses.MSE().loss, vxm.losses.Grad('l2').loss]
-
-lambda_param = 0.5
-loss_weights = [1, lambda_param]
-
-vxm_model.compile(optimizer='Adam', loss=losses, loss_weights=loss_weights)
-
-in_sample, out_sample = next(train_generator)
-
-# visualize
-images = [img[0, :, :, 0] for img in in_sample + out_sample]
-titles = ['moving', 'fixed', 'moved ground-truth (fixed)', 'zeros']
-ne.plot.slices(images, titles=titles, cmaps=['gray'], do_colorbars=True)
-
-nb_epochs = 100
-steps_per_epoch = 100
-hist = vxm_model.fit(train_generator, epochs=nb_epochs, steps_per_epoch=steps_per_epoch, verbose=2)
-# vxm_model.save_weights('./weights/vxm_model_2564.h5')
-
-
-def plot_history(hist, loss_name='loss'):
-    plt.figure()
-    plt.plot(hist.epoch, hist.history[loss_name], '.-')
-    plt.ylabel('loss')
-    plt.xlabel('epoch')
-    plt.show()
-
+cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, save_weights_only=True, verbose=1)
+hist = dnet.fit(train_generator, epochs=nb_epochs, steps_per_epoch=steps_per_epoch, verbose=2,
+                callbacks=[DCallback(), cp_callback])
+dnet.summary()
+dnet.save_weights('./weights/final/weights')
 
 plot_history(hist)

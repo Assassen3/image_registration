@@ -18,11 +18,13 @@ def load_data(load_num=0):
         filename = filenames[num]
         img_ms = io.imread(data_path + "/" + filename + 'ms.png', as_gray=True)
         img_rgb = io.imread(data_path + "/" + filename + "rgb.png", as_gray=True)
-        img_d = io.imread(data_path + "/" + filename + "depth.png")
+        img_d = io.imread(data_path + "/" + filename + "depth.png", as_gray=True)
         img_ms = np.array(img_ms)
         img_rgb = np.array(img_rgb)
         img_d = np.array(img_d)
+        # img_rgb = img_rgb.astype('float') / 255
         img_ms = img_ms.astype('float') / 255
+        img_d = img_d.astype('float') / 255
         data[i, 0] = img_ms
         data[i, 1] = img_rgb
         data[i, 2] = img_d
