@@ -15,6 +15,8 @@ for date in date_list:
                 ms_image = os.path.join(n_path, "msi_reflectance\\part1.png")
                 rbg_image = os.path.join(n_path, n + "_color_uint8.png")
                 depth_image = os.path.join(n_path, n + "_depth_uint16.png")
+                calibration = os.path.join(n_path, n + "_calibration.json")
                 shutil.copy(ms_image, os.path.join(dst_path, date + "_" + pos + "_" + n + '_ms.png'))
                 shutil.copy(rbg_image, os.path.join(dst_path, date + "_" + pos + "_" + n + '_rgb.png'))
                 shutil.copy(depth_image, os.path.join(dst_path, date + "_" + pos + "_" + n + '_depth.png'))
+                shutil.copy(calibration, os.path.join(dst_path, date + "_" + pos + "_" + n + '_calibration.json'))

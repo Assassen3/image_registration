@@ -1,8 +1,9 @@
 import os
+
+import cv2
+import numpy as np
 from PIL import Image
 from tqdm import tqdm
-import numpy as np
-import cv2
 
 # 指定输入图片所在的目录
 input_dir = ".\\data\\tomato"
@@ -60,6 +61,5 @@ for filename in image_files_ms:
     # 更新进度条
     progress_bar_ms.update(1)
     progress_bar_ms.set_postfix({"Image": filename})
-
 
 print("图片批量处理完成!")

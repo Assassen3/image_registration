@@ -1,7 +1,5 @@
-import tensorflow as tf
 import numpy as np
-from scipy.ndimage import gaussian_filter
-import cv2
+import tensorflow as tf
 
 
 class StructuralSimilarityLoss(tf.keras.losses.Loss):

@@ -1,5 +1,4 @@
 from PIL import Image
-from matplotlib import pyplot as plt
 
 
 def blend_images(image_path1, image_path2, output_path, alpha=0.5):

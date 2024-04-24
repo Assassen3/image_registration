@@ -1,115 +1,122 @@
+import csv
 import os
-from pathlib import Path
-import numpy as np
+
 import cv2
-import open3d as o3d
+import k4a
+import numpy as np
 
-def main():
-    base_folder = "E:\\Tomato_data"
-    csv_files = [
-        "E:\\Tomato_data\\map_and_pose_data\\UR_poses_data.csv",
-        "E:\\Tomato_data\\map_and_pose_data\\tomato_data_proc\\T_230315_v3.csv",
-        "E:\\Tomato_data\\map_and_pose_data\\tomato_data_proc\\T_230705_v3.csv"
-    ]
-    T_a2b = np.array([
-        [0, -1, 0, 0],
-        [1, 0, 0, 0],
-        [0, 0, 1, 0],
-        [0, 0, 0, 1]
-    ])
 
-    all_matrices = []
+def processCSVFile(csv_file):
+    matrices_ = []  # 存储矩阵的列表
+    # 逐行读取CSV文件
+    with open(csv_file, 'r') as file:
+        csv_reader = csv.reader(file)
+        for row in csv_reader:
+            row_data = [float(value) for value in row]
 
-    for csv_file in csv_files:
-        print(f"Processing {csv_file}:")
-        matrices = process_csv_file(csv_file)
-        print(f"Number of matrices in {csv_file}: {len(matrices)}")
-        all_matrices.append(matrices)
+            # 检查每行是否包含16个元素，然后将其转换为4x4矩阵
+            if len(row_data) != 16:
+                print("Error: CSV row in", csv_file, "does not contain 16 elements.")
+                continue
+            # 创建4x4矩阵并填充数据
+            matrix = np.array(row_data).reshape((4, 4))
+            matrices_.append(matrix)
+    return matrices_
 
-    is_transformed = True
-    is_mkv_frames = False
 
-    # Iterate over folders in the base folder
-    for entry in os.scandir(base_folder):
-        if entry.is_dir() and entry.name.startswith("2023"):
-            temp_folder = entry.path
-            print(f"Processing folder: {temp_folder}")
+baseFolder = "data/tomato"
+csv_files = ["3d_reconstruction_for_greenhouse_tomato/UR_poses_data.csv",
+             "3d_reconstruction_for_greenhouse_tomato/T_230315_v3.csv",
+             "3d_reconstruction_for_greenhouse_tomato/T_230705_v3.csv"]
 
-            year_number = 0
-            year_start = temp_folder.find("20230")
-            if year_start != -1 and year_start + 5 < len(temp_folder):
-                year_number_str = temp_folder[year_start + 5:]
-                year_number = int(year_number_str)
-                print(f"年份数字: {year_number}")
+T_a2b = np.array([[0, -1, 0, 0],
+                  [1, 0, 0, 0],
+                  [0, 0, 1, 0],
+                  [0, 0, 0, 1]])
 
-            # Iterate over subfolders in the current folder
-            for subentry in os.scandir(temp_folder):
-                if subentry.is_dir() and subentry.name.startswith("p"):
-                    subfolder_path = subentry.path
-                    print(f"Processing subfolder: {subfolder_path}")
+all_matrices = []  # 存储所有矩阵的列表
 
-                    p_number = 0
-                    p_start = subfolder_path.find("p")
-                    if p_start != -1 and p_start + 1 < len(subfolder_path):
-                        p_number_str = subfolder_path[p_start + 1:]
-                        p_number = int(p_number_str)
-                        print(f"p数字: {p_number}")
+for csv_file in csv_files:
+    print("Processing", csv_file + ":")
+    matrices = processCSVFile(csv_file)
 
-                    # Select first matrix based on number
-                    selected_matrix1_row = 1 if year_number in [315, 403] else 2
-                    selected_matrix1_col = -1
+    print("Number of matrices in", csv_file + ":", len(matrices))
+    all_matrices.append(matrices)
 
-                    # Select second matrix based on number
-                    selected_matrix2_row = 0
-                    selected_matrix2_col = p_number - 1
+data_path = "data/tomato"
+filenames = [f[:-6] for f in os.listdir(data_path) if f.endswith("ms.png")]
+for filename in filenames:
+    year_number = int(filename[5:8])
+    p_number = int(filename[10])
+    print('Processing: year: ' + str(year_number) + '  p: ' + str(p_number))
 
-                    if 1 <= p_number <= len(all_matrices[0]):
-                        selected_matrix2 = all_matrices[0][p_number - 1]
-                        print(f"选择的 T_base2cam 在 all_matrices 中的索引:第 {selected_matrix2_row + 1} 页,第 {selected_matrix2_col + 1} 个矩阵")
+    # 根据数字选择第一个矩阵
+    selected_matrix1 = None
+    selected_matrix1_col = -1
+    selected_matrix1_row = 1 if year_number == 315 or year_number == 403 else 2
 
-                    # Process frames in this subfolder
-                    for R in range(6):
-                        for N in range(1, 25):
-                            i = 24 * R + N
+    # 根据数字选择第二个矩阵
+    selected_matrix2 = None
+    selected_matrix2_row = 0  # 默认选择第一页
+    selected_matrix2_col = p_number - 1
+    selected_matrix2 = all_matrices[0][p_number - 1]
 
-                            if p_number in [1, 4, 5, 7, 9]:
-                                if N == 1:
-                                    selected_matrix1 = all_matrices[1][23 * R + N - 1] if year_number in [315, 403] else all_matrices[2][23 * R + N - 1]
-                                    selected_matrix1_col = 23 * R + N - 1
-                                else:
-                                    selected_matrix1 = all_matrices[1][23 * R + N - 2] if year_number in [315, 403] else all_matrices[2][23 * R + N - 2]
-                                    selected_matrix1_col = 23 * R + N - 2
-                                print(f"选择的 T_greenhouse2base 在 all_matrices 中的索引:第 {selected_matrix1_row + 1} 页,第 {selected_matrix1_col + 1} 个矩阵")
-                            else:
-                                if N == 24:
-                                    selected_matrix1 = all_matrices[1][23 * R + N - 2] if year_number in [315, 403] else all_matrices[2][23 * R + N - 2]
-                                    selected_matrix1_col = 23 * R + N - 2
-                                else:
-                                    selected_matrix1 = all_matrices[1][23 * R + N - 1] if year_number in [315, 403] else all_matrices[2][23 * R + N - 1]
-                                    selected_matrix1_col = 23 * R + N - 1
-                                print(f"选择的 T_greenhouse2base 在 all_matrices 中的索引:第 {selected_matrix1_row + 1} 页,第 {selected_matrix1_col + 1} 个矩阵")
+    for R in range(6):
+        for N in range(1, 25):
+            i = 24 * R + N
 
-                            # Construct paths for color, depth, and point cloud files
-                            color_file_path = os.path.join(subfolder_path, str(i), f"{i}_color_uint8_segmented.png")
-                            depth_file_path = os.path.join(subfolder_path, str(i), f"{i}_depth_uint16.png")
-                            calibration_file_path = os.path.join(subfolder_path, str(i), f"{i}_calibration.json")
-                            save_file_path = os.path.join(subfolder_path, f"{i}_pc.pcd")
-                            save_pose_txt_path = os.path.join(subfolder_path, str(i), f"{i}_pose.txt")
-                            label_file_path = os.path.join(subfolder_path, str(i), "raw_label.png")
-                            save_stem_pc_path = os.path.join(subfolder_path, "stems", f"{i}_stem_pc.pcd")
-                            save_fruit_pc_path = os.path.join(subfolder_path, "fruits", f"{i}_fruit_pc.pcd")
-                            save_leaf_pc_path = os.path.join(subfolder_path, "leaves", f"{i}_leaf_pc.pcd")
-                            save_flower_pc_path = os.path.join(subfolder_path, "flowers", f"{i}_flower_pc.pcd")
+            if p_number == 1 or p_number == 4 or p_number == 5 or p_number == 7 or p_number == 9:
+                if N == 1:
+                    # 如果 N 等于 1，根据年份选择矩阵
+                    selected_matrix1 = all_matrices[1][23 * R + N - 1] if year_number == 315 or year_number == 403 else \
+                        all_matrices[2][23 * R + N - 1]
+                    selected_matrix1_col = 23 * R + N - 1
+                else:
+                    # 如果 N 不等于 1，根据 N 的不同值选择矩阵
+                    selected_matrix1 = all_matrices[1][23 * R + N - 2] if year_number == 315 or year_number == 403 else \
+                        all_matrices[2][23 * R + N - 2]
+                    selected_matrix1_col = 23 * R + N - 2
+                print("选择的 T_greenhouse2base 在 all_matrices 中的索引：第", selected_matrix1_row + 1, "页，第",
+                      selected_matrix1_col + 1, "个矩阵")
+            else:
+                if N == 24:
+                    # 如果 N 等于 1，根据年份选择矩阵
+                    selected_matrix1 = all_matrices[1][23 * R + N - 2] if year_number == 315 or year_number == 403 else \
+                        all_matrices[2][23 * R + N - 2]
+                    selected_matrix1_col = 23 * R + N - 2
+                else:
+                    # 如果 N 不等于 1，根据 N 的不同值选择矩阵
+                    selected_matrix1 = all_matrices[1][23 * R + N - 1] if year_number == 315 or year_number == 403 else \
+                        all_matrices[2][23 * R + N - 1]
+                    selected_matrix1_col = 23 * R + N - 1
+                print("选择的 T_greenhouse2base 在 all_matrices 中的索引：第", selected_matrix1_row + 1, "页，第",
+                      selected_matrix1_col + 1, "个矩阵")
 
-                            # Load calibration data
-                            with open(calibration_file_path, 'rb') as f:
-                                calibration_data = f.read()
+            # Load calibration data (you may want to modify this logic)
+            with open(os.path.join(data_path, filename + 'calibration.json'), 'rb') as fin:
+                buffer = bytearray(fin.read())
+                buffer.append(0)
 
-                            # Process the frame
-                            frames_to_pc_v3(color_file_path, depth_file_path, label_file_path,
-                                            save_stem_pc_path, save_fruit_pc_path, save_leaf_pc_path, save_flower_pc_path,
-                                            is_transformed, is_mkv_frames,
-                                            calibration_data, selected_matrix1, T_a2b, selected_matrix2)
-                            print(f"-------- {i} -------- Saving file done!")
+            calibration = k4a.Calibration.create_from_raw(
+                buffer,
+                k4a.EDepthMode.NFOV_UNBINNED,
+                k4a.EColorResolution.RES_720P)
 
-    print("-------- All -------- Saving files done!")
+            transformation = k4a.Transformation(calibration)
+
+            rgb_img = cv2.imread(os.path.join(data_path, filename + 'rgb.png'), cv2.IMREAD_UNCHANGED)
+            depth_img = cv2.imread(os.path.join(data_path, filename + 'depth.png'), cv2.IMREAD_UNCHANGED)
+            rgb_Img = k4a.Image.create(k4a.EImageFormat.COLOR_BGRA32, rgb_img.shape[1], rgb_img.shape[0],
+                                       rgb_img.shape[1] * 4)
+            rgb_Img._data = rgb_img
+            depth_Img = k4a.Image.create(k4a.EImageFormat.DEPTH16, depth_img.shape[1], depth_img.shape[0],
+                                         depth_img.shape[1] * 2)
+            depth_Img._data = depth_img
+            pc_Image = transformation.depth_image_to_point_cloud(depth_Img, k4a.ECalibrationType.COLOR)
+            pc_image = pc_Image._data.copy()
+            pc_image = pc_image.reshape((-1, 3))
+            c = 0
+            for point in pc_image:
+                if sum(point) != 0:
+                    c += 1
+            print(c)

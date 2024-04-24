@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
-import load_data
 import tqdm
+
+import load_data
 
 
 def feature_based_registration(moving_image, fixed_image):

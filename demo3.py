@@ -1,8 +1,8 @@
-import tqdm
-import numpy as np
-import tensorflow as tf
 import matplotlib.pyplot as plt
 import neurite as ne
+import numpy as np
+import tensorflow as tf
+import tqdm
 import voxelmorph as vxm
 
 # Input shapes.

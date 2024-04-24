@@ -1,7 +1,8 @@
-from tqdm import tqdm
+import os
+
 import numpy as np
 from skimage import io
-import os
+from tqdm import tqdm
 
 
 def load_data(load_num=0):
@@ -13,7 +14,7 @@ def load_data(load_num=0):
     shape = io.imread(os.path.join(data_path, filenames[0] + 'ms.png'), as_gray=True).shape
     data = np.zeros((load_num, 3, *shape))
     data_file_name = []
-    load_index = np.random.randint(0, len(filenames), size=load_num)
+    load_index = np.random.choice(len(filenames), size=load_num, replace=False)
     for i, num in enumerate(load_index):
         filename = filenames[num]
         img_ms = io.imread(data_path + "/" + filename + 'ms.png', as_gray=True)

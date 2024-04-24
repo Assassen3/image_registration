@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import neurite as ne
 import voxelmorph as vxm
+
 import load_data
 from data_generator import data_generator
 
@@ -37,6 +38,8 @@ ne.plot.slices(images, titles=titles, cmaps=['gray'], do_colorbars=True)
 nb_epochs = 100
 steps_per_epoch = 100
 hist = vxm_model.fit(train_generator, epochs=nb_epochs, steps_per_epoch=steps_per_epoch, verbose=2)
+
+
 # vxm_model.save_weights('./weights/vxm_model_2564.h5')
 
 
