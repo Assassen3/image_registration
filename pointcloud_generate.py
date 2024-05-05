@@ -1,6 +1,5 @@
 import csv
 import os
-
 import cv2
 import k4a
 import numpy as np

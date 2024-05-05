@@ -87,4 +87,4 @@ class DepthDeformationLoss(tf.keras.losses.Loss):
         # 计算平均SSIM值
         mssim = ssim_map * masked
 
-        return mssim
+        return 1 - abs(mssim)

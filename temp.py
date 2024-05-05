@@ -1,42 +1,34 @@
-import tensorflow as tf
-from tensorflow.keras.layers import Dense
+import open3d as o3d
+
+color_raw = o3d.t.io.read_image(r"results/20230315_p1_3_rgb.png")
+depth_raw = o3d.t.io.read_image(r"results/20230315_p1_3_depth.png")
+depth_raw = depth_raw.to(dtype=o3d.core.Dtype.UInt16)
+# rgbd_image = o3d.t.geometry.RGBDImage(color_raw, depth_raw)
+# print(rgbd_image)
 
 
-class Net(tf.keras.Model):
-    def __init__(self):
-        super(Net, self).__init__()
-        self.D1 = Dense(10, activation='relu')
-        self.D2 = Dense(10, activation='relu')
-        self.D3 = Dense(1, activation='sigmoid')
-        self.D4 = Dense(1, activation='sigmoid')
+# plt.subplot(1, 2, 1)
+# plt.title('Redwood grayscale image')
+# plt.imshow(rgbd_image.color)
+# plt.subplot(1, 2, 2)
+# plt.title('Redwood depth image')
+# plt.imshow(rgbd_image.depth)
+# plt.show()
+# intrinsic = o3d.camera.PinholeCameraIntrinsic(1024, 1024,
+#                                               0.49117687344551086,
+#                                               0.49127498269081116,
+#                                               0.50117456912994385,
+#                                               0.50129920244216919
+#                                               )
+intrinsic = o3d.core.Tensor([[0.49117687344551086, 0, 0.50117456912994385],
+                             [0, 0.49127498269081116, 0.50129920244216919],
+                             [0, 0, 1]])
+# intrinsic = o3d.core.Tensor([[491.17687344551086, 0, 501.17456912994385],
+#                              [0, 491.27498269081116, 501.29920244216919],
+#                              [0, 0, 1]])
+# intrinsic = o3d.core.Tensor([[535.4, 0, 320.1], [0, 539.2, 247.6],
+#                              [0, 0, 1]])
+pcd = o3d.t.geometry.PointCloud.create_from_depth_image(depth=depth_raw, intrinsics=intrinsic,depth_scale=500000.0,)
+o3d.visualization.draw([pcd])
 
-    def call(self, inputs, **kwargs):
-        o1 = self.D3(self.D1(inputs))
-        o2 = self.D4(self.D2(inputs))
-        return o1, o2
-
-
-# 定义一个简单的模型
-model = Net()
-
-
-# 函数定义一个自定义的metric，仅接受y_pred
-def mean_pred(y_pred, _):
-    print(_.shape)
-    return tf.reduce_mean(y_pred)
-
-
-# 编译模型，并添加不同类型的metrics
-model.compile(optimizer='adam',
-              loss='binary_crossentropy',
-              metrics=[[], [mean_pred]])
-
-# 模拟一些数据
-import numpy as np
-
-x_train = np.random.random((100, 20))
-y_train = (np.random.randint(2, size=(100, 1)), np.random.randint(2, size=(100, 1)))
-
-y = model(x_train)
-# 训练模型
-model.fit(x_train, y_train, epochs=5, batch_size=50)
+print(1)  # 输出点云点的个数
