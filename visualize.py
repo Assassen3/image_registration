@@ -41,10 +41,10 @@ if __name__ == '__main__':
     import os
 
     # 设置点云文件夹路径
-    folder_path = r'E:\files\毕业设计\tomato_data_organs_pose\20230315\p1'
+    folder_path = r'E:\files\毕业设计\tomato_data_organs_pose\20230501\p5'
 
     # 获取文件夹中所有点云文件
-    files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('pc.pcd')]
+    files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('msi_1_pc.pcd')]
 
     # 读取并存储所有点云
     point_clouds = []

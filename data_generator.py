@@ -29,9 +29,9 @@ def data_generator_predict(data, batch_size=10):
     while True:
         if idx >= data.shape[0]:
             yield None, None
-        moving_images = data[idx:idx + batch_size, 0, ..., np.newaxis]
-        fixed_images = data[idx:idx + batch_size, 1, ..., np.newaxis]
-        depth_images = data[idx:idx + batch_size, 2, ..., np.newaxis]
+        moving_images = data[idx:idx + batch_size, -3, ..., np.newaxis]
+        fixed_images = data[idx:idx + batch_size, -2, ..., np.newaxis]
+        depth_images = data[idx:idx + batch_size, -1, ..., np.newaxis]
         idx += batch_size
 
         inputs = [moving_images, fixed_images, depth_images]

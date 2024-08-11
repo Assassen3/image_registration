@@ -1,34 +1,30 @@
-import open3d as o3d
+import os
+import shutil
+import cv2
 
-color_raw = o3d.t.io.read_image(r"results/20230315_p1_3_rgb.png")
-depth_raw = o3d.t.io.read_image(r"results/20230315_p1_3_depth.png")
-depth_raw = depth_raw.to(dtype=o3d.core.Dtype.UInt16)
-# rgbd_image = o3d.t.geometry.RGBDImage(color_raw, depth_raw)
-# print(rgbd_image)
+# def copy_folder_structure(src, dst):
+#     for root, dirs, files in os.walk(src):
+#         # Construct the corresponding destination path
+#         dst_root = os.path.join(dst, os.path.relpath(root, src))
+#
+#         # Create the directories in the destination
+#         for dir in dirs:
+#             os.makedirs(os.path.join(dst_root, dir), exist_ok=True)
+#
+#
+# # 使用示例
+# source_folder = r'E:\files\毕业设计\tomato_data_organs_pose'
+# destination_folder = r'H:\tomato_data_organs_pose'
+#
+# # 确保目标文件夹存在
+# os.makedirs(destination_folder, exist_ok=True)
+#
+# # 复制文件夹结构
+# copy_folder_structure(source_folder, destination_folder)
 
-
-# plt.subplot(1, 2, 1)
-# plt.title('Redwood grayscale image')
-# plt.imshow(rgbd_image.color)
-# plt.subplot(1, 2, 2)
-# plt.title('Redwood depth image')
-# plt.imshow(rgbd_image.depth)
-# plt.show()
-# intrinsic = o3d.camera.PinholeCameraIntrinsic(1024, 1024,
-#                                               0.49117687344551086,
-#                                               0.49127498269081116,
-#                                               0.50117456912994385,
-#                                               0.50129920244216919
-#                                               )
-intrinsic = o3d.core.Tensor([[0.49117687344551086, 0, 0.50117456912994385],
-                             [0, 0.49127498269081116, 0.50129920244216919],
-                             [0, 0, 1]])
-# intrinsic = o3d.core.Tensor([[491.17687344551086, 0, 501.17456912994385],
-#                              [0, 491.27498269081116, 501.29920244216919],
-#                              [0, 0, 1]])
-# intrinsic = o3d.core.Tensor([[535.4, 0, 320.1], [0, 539.2, 247.6],
-#                              [0, 0, 1]])
-pcd = o3d.t.geometry.PointCloud.create_from_depth_image(depth=depth_raw, intrinsics=intrinsic,depth_scale=500000.0,)
-o3d.visualization.draw([pcd])
-
-print(1)  # 输出点云点的个数
+img1 = cv2.imread( r"E:\files\ComputerScience\Programs\image_registration\results\predict_re\20230315_p1_1_moved_1.png")
+img2 = cv2.imread(r"E:\files\ComputerScience\Programs\image_registration\results\predict_re\20230315_p1_1_moved_2.png")
+for i in range(img1.shape[0]):
+    for j in range(img1.shape[1]):
+        if img1[i,j,0] != img2[i,j,0]:
+            print("！")

@@ -2,21 +2,38 @@ import os
 import shutil
 from tqdm import tqdm
 
-root_path = "E:\\files\\ComputerScience\\Programs\\image_registration\\data\\tomato_back_modified"
-dst_path = "E:\\files\\毕业设计\\tomato_data_organs_pose\\"
+def copy_folder_structure(src, dst):
+    for root, dirs, files in os.walk(src):
+        # Construct the destination path
+        rel_path = os.path.relpath(root, src)
+        dst_path = os.path.join(dst, rel_path)
 
-filenames = [f[:-9] for f in os.listdir(root_path) if f.endswith("_ms_1.png")]
+        # Create the directory at the destination path
+        os.makedirs(dst_path, exist_ok=True)
+
+        # Optionally, print the created directories
+        print(f"Created directory: {dst_path}")
+
+
+# 源文件夹路径
+src_folder = 'E:\\files\\毕业设计\\tomato_data_organs_pose'
+# 目标文件夹路径
+dst_folder = 'G:\\tomato_data_organs_pose\\'
+
+copy_folder_structure(src_folder, dst_folder)
+print('folder structure copied successfully!')
+
+root_path = "E:\\files\\ComputerScience\\Programs\\image_registration\\data\\tomato_dn_back_modified"
+dst_path = "G:\\tomato_data_organs_pose\\"
+filenames = os.listdir(root_path)
 bar = tqdm(filenames)
 
 for file in filenames:
-    date, p, n = file.split("_")
-    dir_path = dst_path + date + "\\" + p + "\\" + n + "\\" + "moved_msi"
+    date, p, n, ms, part = file.split("_")
+    dir_path = dst_path + date + "\\" + p + "\\" + n + "\\" + "msi_moved"
     try:
         os.mkdir(dir_path)
     except FileExistsError:
-        print(f"文件夹 '{dir_path}' 已存在。")
-    except Exception as e:
-        print(f"创建文件夹时出错：{e}")
-    shutil.copy(os.path.join(root_path, file + "_ms_1.png"), os.path.join(dir_path, "1_moved_msi.png"))
+        pass
+    shutil.copy(os.path.join(root_path, file), os.path.join(dir_path, "part" + part))
     bar.update(1)
-

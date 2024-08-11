@@ -6,10 +6,10 @@ from PIL import Image
 from tqdm import tqdm
 
 # 指定输入图片所在的目录
-input_dir = ".\\data\\tomato"
+input_dir = ".\\data\\tomato_dn"
 
 # 指定输出图片的目录
-output_dir = ".\\data\\tomato_modified"
+output_dir = ".\\data\\tomato_dn_modified"
 
 # 指定目标分辨率
 # TODO crop image instead of resize

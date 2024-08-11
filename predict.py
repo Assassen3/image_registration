@@ -34,17 +34,18 @@ while i is not None:
 
         img = img.squeeze() * 256
         img = img.clip(0, 255).astype(np.uint8)
+        ms_images_moved = ms_images_moved.numpy().squeeze()
 
         for k in range(25):
-            cv2.imwrite('./results/predict/' + filenames[count] + 'moved_' + str(k + 1) + '.png', img)
+            cv2.imwrite('./results/predict_dn/' + filenames[count] + 'moved_' + str(k + 1) + '.png', ms_images_moved[k])
 
         flow_img = flow_img.squeeze()
         min_val = np.min(flow)
         max_val = np.max(flow)
         flow = (flow - min_val) / (max_val - min_val) * 255
         flow_img = flow_img.clip(0, 255).astype(np.uint8)
-        cv2.imwrite('./results/predict/' + filenames[count] + 'flow_h.png', flow_img[..., 0])
-        cv2.imwrite('./results/predict/' + filenames[count] + 'flow_v.png', flow_img[..., 1])
+        cv2.imwrite('./results/predict_dn/' + filenames[count] + 'flow_h.png', flow_img[..., 0])
+        cv2.imwrite('./results/predict_dn/' + filenames[count] + 'flow_v.png', flow_img[..., 1])
         count += 1
         bar.update(1)
     i, _ = next(predict_generator)
