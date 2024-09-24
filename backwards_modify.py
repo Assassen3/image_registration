@@ -4,7 +4,7 @@ from PIL import Image
 from tqdm import tqdm
 
 # 指定输入图片所在的目录
-input_dir = ".\\results\\predict"
+input_dir = ".\\results\\predict_dn"
 
 # 指定输出图片的目录
 output_dir = ".\\data\\tomato_dn_back_modified"

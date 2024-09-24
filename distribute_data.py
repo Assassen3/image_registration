@@ -12,19 +12,19 @@ def copy_folder_structure(src, dst):
         os.makedirs(dst_path, exist_ok=True)
 
         # Optionally, print the created directories
-        print(f"Created directory: {dst_path}")
+        # print(f"Created directory: {dst_path}")
 
 
 # 源文件夹路径
-src_folder = 'E:\\files\\毕业设计\\tomato_data_organs_pose'
+src_folder = 'D:\\files\\毕业设计\\tomato_data_organs_pose'
 # 目标文件夹路径
-dst_folder = 'G:\\tomato_data_organs_pose\\'
+dst_folder = 'E:\\tomato_data_organs_pose_registration\\'
 
 copy_folder_structure(src_folder, dst_folder)
 print('folder structure copied successfully!')
 
-root_path = "E:\\files\\ComputerScience\\Programs\\image_registration\\data\\tomato_dn_back_modified"
-dst_path = "G:\\tomato_data_organs_pose\\"
+root_path = "D:\\files\\ComputerScience\\Programs\\image_registration\\data\\tomato_dn_back_modified"
+dst_path = "E:\\tomato_data_organs_pose_registration\\"
 filenames = os.listdir(root_path)
 bar = tqdm(filenames)
 

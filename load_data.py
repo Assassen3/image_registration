@@ -5,9 +5,8 @@ from skimage import io
 from tqdm import tqdm
 
 
-def load_data(load_num=0):
+def load_data(data_path, load_num=0):
     print('Loading data...')
-    data_path = "data/tomato_dn_modified"
     filenames = [f[:-7] for f in os.listdir(data_path) if f.endswith("rgb.png")]
     load_num = len(filenames) if load_num == 0 else load_num
     load_bar = tqdm(total=load_num, unit='image')
@@ -37,8 +36,7 @@ def load_data(load_num=0):
     return data, data_file_name
 
 
-def load_ms_by_name(file_name):
-    data_path = "data/tomato_dn_modified"
+def load_ms_by_name(data_path, file_name):
     data = []
     for i in range(25):
         img_ms = io.imread(data_path + "/" + file_name + 'ms_' + str(i + 1) + '.png', as_gray=True)
@@ -49,9 +47,8 @@ def load_ms_by_name(file_name):
     return data
 
 
-def load_data_all(load_num=0):
+def load_data_all(data_path, load_num=0,):
     print('Loading data...')
-    data_path = "data/tomato_dn_modified"
     filenames = [f[:-7] for f in os.listdir(data_path) if f.endswith("rgb.png")]
     load_num = len(filenames) if load_num == 0 else load_num
     load_bar = tqdm(total=load_num, unit='image')
