@@ -1,21 +1,20 @@
-import matplotlib.pyplot as plt
+import open3d as o3d
 import numpy as np
 
-from model import SpatialTransformer
+point_cloud_1 = o3d.io.read_point_cloud("3.ply")
+point_cloud_2 = o3d.io.read_point_cloud("4.ply")
 
-spt = SpatialTransformer()
-img = np.zeros((1, 255, 255, 1), dtype=np.float32)
-for i in range(255):
-    img[0, i, :, 0] = i
-flow = np.zeros((1, 255, 255, 2), dtype=np.float32)
-for i in range(50, 100):
-    flow[0, i, :, 1] = 25.
+points = np.asarray(point_cloud_1.points)
 
-img_moved = spt([img, flow])
+# 筛选出不包含 (0, 0, 0) 点的点云
+filtered_points = points[~np.all(points == [0, 0, 0], axis=1)]
 
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 4))
-ax1.imshow(img[0, ..., 0])
-ax2.imshow(flow[0, ..., 1])
-ax3.imshow(img_moved[0, ..., 0])
-plt.tight_layout()
-plt.show()
+# 创建一个新的点云对象
+filtered_pcd = o3d.geometry.PointCloud()
+
+# 将过滤后的点云数组赋值给新的点云对象
+filtered_pcd.points = o3d.utility.Vector3dVector(filtered_points)
+
+# 保存或可视化去除 (0, 0, 0) 点后的点云
+o3d.io.write_point_cloud("5.ply", filtered_pcd)
+o3d.visualization.draw_geometries([filtered_pcd])
