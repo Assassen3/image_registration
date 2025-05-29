@@ -1,6 +1,8 @@
 import os
 import shutil
+
 from tqdm import tqdm
+
 
 def copy_folder_structure(src, dst):
     for root, dirs, files in os.walk(src):
