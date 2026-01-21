@@ -1,14 +1,11 @@
-import os.path
+import csv
+from pathlib import Path
 
 import cv2
-import numpy
 import numpy as np
+import pandas as pd
 from PIL import Image
-
-from data_generator import data_generator_predict
-from load_data import *
-from losses import *
-from model import DNet, SpatialTransformer
+from tqdm import tqdm
 
 DEPTH_THRESHOLD_MIN = 0
 DEPTH_THRESHOLD_MAX = 2500
@@ -21,90 +18,87 @@ inverse_linear_part = np.linalg.inv(ALIGN_MATRIX[:, :2])
 inverse_translation_part = -np.dot(inverse_linear_part, ALIGN_MATRIX[:, 2])
 M_inv = np.hstack((inverse_linear_part, inverse_translation_part.reshape(2, 1)))
 
+cam2world = np.array([[0.978813707829, -0.151365548372, -0.137884676456, 0.144190746048],
+                      [0.010250490159, -0.636350452900, 0.771331965923, -0.468420714817],
+                      [-0.204496055841, -0.756403684616, -0.621316969395, 0.358610486366],
+                      [0.000000000000, 0.000000000000, 0.000000000000, 1.000000000000]])
 
-def image_registration(root_path: str, DLDisable=True):
-    pos_list = os.listdir(root_path)
+bands_order = np.array([
+    21, 22, 23, 24, 25,
+    16, 17, 18, 19, 20,
+    11, 12, 13, 14, 15,
+    6, 7, 8, 9, 10,
+    1, 2, 3, 4, 5
+])
+
+
+def T2T(path: Path):
+    view_csv = list(path.glob('*_v*.xlsx'))[0]
+    df = pd.read_excel(view_csv)  # 读取xlsx
+    matrices = []
+
+    for _, row in df.iterrows():
+        degree = - int(row['DegreeRotation'])
+        theta_z = np.deg2rad(degree)
+
+        Rz = np.array([
+            [np.cos(theta_z), -np.sin(theta_z), 0, 0],
+            [np.sin(theta_z), np.cos(theta_z), 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+
+        matrices.append(cam2world @ Rz)
+
+    with open(path / 'T.csv', 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        for mat in matrices:
+            writer.writerow([mat[i // 4, i % 4] for i in range(16)])
+
+
+def image_registration(root_path: Path):
+    poses = list(root_path.glob("*[0-9]"))
     all_data = []
-    for pos in pos_list:
-        if not os.path.isdir(os.path.join(root_path, pos)):
-            continue
-        pos_path = os.path.join(root_path, pos)
-        ms_images = []
-        for i in range(25):
-            img = numpy.array(Image.open(os.path.join(pos_path, "msi_DN", f"part{str(i + 1)}.png")))
-            ms_images.append(img)
-        rbg_image = numpy.array(Image.open(os.path.join(pos_path, f"{pos}_color_uint8.png")).convert('L'))
-        depth_image = numpy.array(Image.open(os.path.join(pos_path, f"{pos}_depth_uint16.png")))
+
+    for pos in poses:
+        rbg_image = np.array(Image.open(pos / f'{pos.name}_color_uint8.png').convert('F')) / 255.0
+        depth_image = np.array(Image.open(pos / f'{pos.name}_depth_uint16.png'))
+        ms_images = [np.array(Image.open(pos / 'msi_DN' / f'part{i + 1}.png').convert('F')) / 255.0 for i in range(25)]
         all_data.append([rbg_image, depth_image, ms_images])
+
     all_data = [preprocess(*d) for d in all_data]
-    for d in range(len(all_data)):
-        _ = []
-        for b in range(25):
-            _.append(all_data[d][2][b] / 255.0)
-        all_data[d] = [all_data[d][0] / 255.0, all_data[d][1] / 255.0, _]
 
-    data = []
-    for d in all_data:
-        data.append([d[2][0], d[0], d[1]])
-    data = np.array(data)
+    for idx, pos in enumerate(tqdm(poses, leave=False)):
+        ms_imgs = postprocess(all_data[idx][2])
+        prd_folder = pos / 'predict_DN'
+        prd_folder.mkdir(exist_ok=True)
+        for band in range(25):
+            img = Image.fromarray(ms_imgs[band])
+            img.save(prd_folder / f'part{band + 1}.png')
 
-    if DLDisable:
-        bar = tqdm(total=len(pos_list) * 25)
-        for i, pos in enumerate(pos_list):
-            if not os.path.isdir(os.path.join(root_path, pos)):
-                continue
-            ms_imgs = postprocess(all_data[i][2])
-            try:
-                os.mkdir(os.path.join(root_path, pos, 'predict_DN'))
-            except Exception:
-                pass
-            for k in range(25):
-                img = Image.fromarray(ms_imgs[k])
-                img.save(os.path.join(root_path, pos, 'predict_DN', f'part{k + 1}.png'))
-                bar.update(1)
-        return
 
-    predict_generator = data_generator_predict(data, 100)
+def split_ms_images(batch_path: Path):
+    ms_images = list(batch_path.rglob('*[0-9]/*[0-9].tiff'))
 
-    dnet = DNet()
-    spt = SpatialTransformer()
-    dnet.compile()
-    dnet.load_weights('./weights/20240813/10-0.92/weights')
+    for ms_image in tqdm(ms_images, desc='split MS images', leave=False):
+        dst_folder = ms_image.parent / 'msi_DN'
+        dst_folder.mkdir(parents=True, exist_ok=True)
 
-    count = 0
-    i, _ = next(predict_generator)
-    bar = tqdm(total=len(data))
-    while i is not None:
-        moved, flow, _ = dnet.predict(i, verbose=0)
+        frame = np.array(Image.open(ms_image))
 
-        for j in range(len(moved)):
-            flow_img = flow[j]
+        frame = frame[:1085, :2045]
+        frame = frame.reshape(217, 5, 409, 5)
+        frame = frame.transpose(0, 2, 1, 3).reshape(217, 409, 25)
 
-            ms_images = all_data[count][2]
-            ms_images = tf.expand_dims(ms_images, axis=-1)
-            flow_img_tf = tf.expand_dims(flow_img, axis=0)
-            flow_img_tf = tf.tile(flow_img_tf, multiples=[25, 1, 1, 1])
-            ms_images_moved = spt([ms_images, flow_img_tf])
-
-            ms_images_moved = ms_images_moved.numpy().squeeze() * 256
-            ms_images_moved = ms_images_moved.clip(0, 255).astype(np.uint8)
-
-            ms_images_moved = postprocess(ms_images_moved)
-            try:
-                os.mkdir(os.path.join(root_path, pos_list[count], 'predict_DN'))
-            except Exception:
-                pass
-            for k in range(25):
-                img = Image.fromarray(ms_images_moved[k])
-                img.save(os.path.join(root_path, pos_list[count], 'predict_DN', f'part{k + 1}.png'))
-            count += 1
-            bar.update(1)
-        i, _ = next(predict_generator)
+        for i in range(25):
+            current_part = frame[:, :, i]
+            output_filename = dst_folder / f'part{bands_order[i]}.png'
+            Image.fromarray(current_part).save(output_filename)
 
 
 def preprocess(rgb_img, depth_img, ms_imgs):
     for i in range(25):
-        ms_imgs[i] = numpy.array(Image.fromarray(ms_imgs[i]).resize(TARGET_SIZE))
+        ms_imgs[i] = np.array(Image.fromarray(ms_imgs[i]).resize(TARGET_SIZE))
 
     rgb_img = cv2.warpAffine(rgb_img, ALIGN_MATRIX, TARGET_SIZE)
     depth_img = cv2.warpAffine(depth_img, ALIGN_MATRIX, (TARGET_SIZE[0], TARGET_SIZE[1]))
@@ -123,7 +117,3 @@ def postprocess(ms_imgs):
         img = (cv2.warpAffine(ms_imgs[i], M_inv, SOURCE_SIZE) * 255).astype(np.uint8)
         r.append(img)
     return r
-
-
-if __name__ == '__main__':
-    image_registration(r'F:\共享盘\20250521\test2\多光谱三维重构\A01')
