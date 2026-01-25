@@ -1,119 +1,128 @@
-import csv
+import json
 from pathlib import Path
 
-import cv2
 import numpy as np
 import pandas as pd
-from PIL import Image
-from tqdm import tqdm
+from PIL import Image, ImageDraw
 
-DEPTH_THRESHOLD_MIN = 0
-DEPTH_THRESHOLD_MAX = 2500
-TARGET_SIZE = (400, 208)
-SOURCE_SIZE = (1920, 1080)
-CROP_BOX = (142, 466, 662, 779)
-ALIGN_MATRIX = np.array(
-    [[3.27437198e-01, -8.16576004e-03, -9.35131227e+01], [2.72110507e-02, 3.03062160e-01, -5.32075790e+01]])
-inverse_linear_part = np.linalg.inv(ALIGN_MATRIX[:, :2])
-inverse_translation_part = -np.dot(inverse_linear_part, ALIGN_MATRIX[:, 2])
-M_inv = np.hstack((inverse_linear_part, inverse_translation_part.reshape(2, 1)))
-
-cam2world = np.array([[0.978813707829, -0.151365548372, -0.137884676456, 0.144190746048],
-                      [0.010250490159, -0.636350452900, 0.771331965923, -0.468420714817],
-                      [-0.204496055841, -0.756403684616, -0.621316969395, 0.358610486366],
-                      [0.000000000000, 0.000000000000, 0.000000000000, 1.000000000000]])
-
-bands_order = np.array([
-    21, 22, 23, 24, 25,
-    16, 17, 18, 19, 20,
-    11, 12, 13, 14, 15,
-    6, 7, 8, 9, 10,
-    1, 2, 3, 4, 5
-])
+import cpp_module
 
 
-def T2T(path: Path):
-    view_csv = list(path.glob('*_v*.xlsx'))[0]
-    df = pd.read_excel(view_csv)  # 读取xlsx
-    matrices = []
+class Registrator:
+    def __init__(self):
+        self.rgbd_intrinsic = np.load('data/config/intrinsic-rgbd.npy')
+        self.ms_intrinsic = np.load('data/config/intrinsic-ms.npy')
+        rgbd_ex = np.load('data/config/extrinsic-rgbd.npz', allow_pickle=True)
+        ms_ex = np.load('data/config/extrinsic-ms.npz', allow_pickle=True)
+        self.rgbd_extrinsic = rgbd_ex['matrix']
+        self.ms_extrinsic = ms_ex['matrix']
+        self.height = rgbd_ex['height'].item()
+        self.radial = rgbd_ex['radial'].item()
+        assert rgbd_ex['height'] == ms_ex['height']
+        assert ms_ex['radial'] == ms_ex['radial']
 
-    for _, row in df.iterrows():
-        degree = - int(row['DegreeRotation'])
-        theta_z = np.deg2rad(degree)
+    def get_extra_transform(self, file: Path | str):
+        config = pd.read_excel(file)
+        num = config.shape[0]
+        height = np.array(config['HeightAdjust'] - config['PlantElevation']) / 1000.0 - self.height
+        radial = -np.array(config['RadialAdjust']) / 1000.0 + self.radial
+        rotation = np.array(config['DegreeRotation']) / 180 * np.pi
+        extra_transform = np.stack([np.eye(4)] * num, axis=0)
+        extra_transform[:, 0, 0] = np.cos(rotation)
+        extra_transform[:, 0, 1] = -np.sin(rotation)
+        extra_transform[:, 1, 0] = np.sin(rotation)
+        extra_transform[:, 1, 1] = np.cos(rotation)
+        T_trans = np.eye(4)
+        T_trans[2, -1] = height[0]
+        T_trans[1, -1] = radial[0]
+        extra_transform = extra_transform @ T_trans
+        return extra_transform
 
-        Rz = np.array([
-            [np.cos(theta_z), -np.sin(theta_z), 0, 0],
-            [np.sin(theta_z), np.cos(theta_z), 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ])
+    def get_rgb_pc(self, rgb, depth, extra_mtx, save_path: Path):
+        num = rgb.shape[0]
+        for i in range(num):
+            pos = cpp_module.registration(rgb[i], depth[i]) / 1000.0
+            pos = np.hstack([pos, np.ones_like(pos[:, 0:1])])
+            pos = (extra_mtx[i] @ self.rgbd_extrinsic @ pos.T).T
+            mask = (pos[:, 0] > -0.3) & (pos[:, 0] < 0.3) & \
+                   (pos[:, 1] > -0.3) & (pos[:, 1] < 0.3) & \
+                   (pos[:, 2] > -0.5) & (pos[:, 2] < 0.5)
+            pc = np.hstack([pos[mask, :3], rgb[i].reshape((-1, 4))[mask, :3]])
+            cpp_module.save_points(str(save_path / f'{i + 1}.ply'), pc, ['x', 'y', 'z', 'Red', 'Green', 'Blue'],
+                                   ['float'] * 3 + ['uint8'] * 3)
+            print(i)
 
-        matrices.append(cam2world @ Rz)
+    def visualize_results(self, rgb, depth, extra_mtx, save_path):
+        num = rgb.shape[0]
+        save_path.mkdir(parents=True, exist_ok=True)
+        for i in range(num):
+            axis_points = np.array([[0, 0, 0, 1],
+                                    [0.05, 0, 0, 1],
+                                    [0, 0.05, 0, 1],
+                                    [0, 0, 0.05, 1]], dtype=np.float32)
+            axis_points_camera = np.linalg.inv(registrater.rgbd_extrinsic) @ np.linalg.inv(extra_mtx[i]) @ axis_points.T
+            axis_points_camera = registrater.rgbd_intrinsic @ (axis_points_camera[:3, :] / axis_points_camera[2, :])
+            image = Image.fromarray(rgb_np[i])
+            draw = ImageDraw.Draw(image)
+            draw.line(([axis_points_camera[0, 0], axis_points_camera[1, 0]],
+                       [axis_points_camera[0, 1], axis_points_camera[1, 1]]), fill="red", width=2)
+            draw.line(([axis_points_camera[0, 0], axis_points_camera[1, 0]],
+                       [axis_points_camera[0, 2], axis_points_camera[1, 2]]), fill="green", width=2)
+            draw.line(([axis_points_camera[0, 0], axis_points_camera[1, 0]],
+                       [axis_points_camera[0, 3], axis_points_camera[1, 3]]), fill="blue", width=2)
+            image.save(save_path / f'{i}.png')
 
-    with open(path / 'T.csv', 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        for mat in matrices:
-            writer.writerow([mat[i // 4, i % 4] for i in range(16)])
-
-
-def image_registration(root_path: Path):
-    poses = list(root_path.glob("*[0-9]"))
-    all_data = []
-
-    for pos in poses:
-        rbg_image = np.array(Image.open(pos / f'{pos.name}_color_uint8.png').convert('F')) / 255.0
-        depth_image = np.array(Image.open(pos / f'{pos.name}_depth_uint16.png'))
-        ms_images = [np.array(Image.open(pos / 'msi_DN' / f'part{i + 1}.png').convert('F')) / 255.0 for i in range(25)]
-        all_data.append([rbg_image, depth_image, ms_images])
-
-    all_data = [preprocess(*d) for d in all_data]
-
-    for idx, pos in enumerate(tqdm(poses, leave=False)):
-        ms_imgs = postprocess(all_data[idx][2])
-        prd_folder = pos / 'predict_DN'
-        prd_folder.mkdir(exist_ok=True)
-        for band in range(25):
-            img = Image.fromarray(ms_imgs[band])
-            img.save(prd_folder / f'part{band + 1}.png')
-
-
-def split_ms_images(batch_path: Path):
-    ms_images = list(batch_path.rglob('*[0-9]/*[0-9].tiff'))
-
-    for ms_image in tqdm(ms_images, desc='split MS images', leave=False):
-        dst_folder = ms_image.parent / 'msi_DN'
-        dst_folder.mkdir(parents=True, exist_ok=True)
-
-        frame = np.array(Image.open(ms_image))
-
-        frame = frame[:1085, :2045]
-        frame = frame.reshape(217, 5, 409, 5)
-        frame = frame.transpose(0, 2, 1, 3).reshape(217, 409, 25)
-
-        for i in range(25):
-            current_part = frame[:, :, i]
-            output_filename = dst_folder / f'part{bands_order[i]}.png'
-            Image.fromarray(current_part).save(output_filename)
-
-
-def preprocess(rgb_img, depth_img, ms_imgs):
-    for i in range(25):
-        ms_imgs[i] = np.array(Image.fromarray(ms_imgs[i]).resize(TARGET_SIZE))
-
-    rgb_img = cv2.warpAffine(rgb_img, ALIGN_MATRIX, TARGET_SIZE)
-    depth_img = cv2.warpAffine(depth_img, ALIGN_MATRIX, (TARGET_SIZE[0], TARGET_SIZE[1]))
-    depth_img = np.where(
-        (depth_img < DEPTH_THRESHOLD_MIN) | (depth_img > DEPTH_THRESHOLD_MAX),
-        0,
-        depth_img
-    )
-    depth_img = ((depth_img / DEPTH_THRESHOLD_MAX) * 255.0).astype(np.uint8)
-    return rgb_img, depth_img, ms_imgs
+    def export_nerf_json(self, rgb, depth, extra_mtx, save_path):
+        num = rgb.shape[0]
+        save_path.mkdir(parents=True, exist_ok=True)
+        img_save_path = save_path / 'images'
+        img_save_path.mkdir(parents=True, exist_ok=True)
+        for i in range(num):
+            img = Image.fromarray(rgb[i])
+            img.save(img_save_path / f'{i:03d}.png')
+            j = (i - 1) % num
+            mask = np.sum(rgb[i] / 255.0 - rgb[j] / 255.0, axis=-1) > 0.04
+            mask = (mask * 255.0).astype(np.uint8)
+            Image.fromarray(depth[i]).save(img_save_path / f'depth{i:03d}.png')
+            Image.fromarray(mask).save(img_save_path / f"mask{i:03d}.png")
+        h, w = rgb.shape[1:3 ]
+        fx, fy = self.rgbd_intrinsic[0, 0], self.rgbd_intrinsic[1, 1]
+        trans = {
+            "camera_angle_x": 2 * np.atan(w / 2 / fx),
+            "camera_angle_y": 2 * np.atan(h / 2 / fy),
+            "fl_x": fx,
+            "fl_y": fy,
+            "cx": self.rgbd_intrinsic[0, 2],
+            "cy": self.rgbd_intrinsic[1, 2],
+            "w": w,
+            "h": h,
+        }
+        frames = []
+        for i in range(num):
+            c2w = extra_mtx[i] @ self.rgbd_extrinsic @ np.diag([1, -1, -1, 1])
+            filename = f"./images/{i:03d}.png"
+            frames.append({"file_path": filename, "transform_matrix": c2w.tolist(),
+                           "depth_file_path":f"./images/depth{i:03d}.png",
+                          "mask_path": f"./images/mask{i:03d}.png"})
+        trans['frames'] = frames
+        with open(save_path / 'transforms.json', 'w', encoding='utf-8') as f:
+            json.dump(trans, f)
 
 
-def postprocess(ms_imgs):
-    r = []
-    for i in range(25):
-        img = (cv2.warpAffine(ms_imgs[i], M_inv, SOURCE_SIZE) * 255).astype(np.uint8)
-        r.append(img)
-    return r
+if __name__ == '__main__':
+    registrater = Registrator()
+    extra_mtx = registrater.get_extra_transform('data/K1/T_K1_v36.xlsx')
+    base = Path('data/K1')
+    rgb = []
+    depth = []
+    for i in range(36):
+        rgb.append(np.array(Image.open(base / str(i + 1) / f'{i + 1}_color_uint8.png')))
+        depth.append(np.array(Image.open(base / str(i + 1) / f'{i + 1}_depth_uint16.png')))
+    rgb_np = np.array(rgb)
+    depth_np = np.array(depth)
+
+    save_path = Path('data/K1/pc')
+    save_path.mkdir(parents=True, exist_ok=True)
+    registrater.get_rgb_pc(rgb_np, depth_np, extra_mtx, save_path)
+
+    # registrater.export_nerf_json(rgb_np, depth_np,extra_mtx, save_path=Path('data/K1/nerf'))

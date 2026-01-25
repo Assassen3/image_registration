@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -37,7 +38,7 @@ class Calibrator:
 
         return all_corners, all_ids
 
-    def calibrate(self, img_list: list[np.ndarray]):
+    def calibrate(self, img_list: list[np.ndarray], save=True, filename=None):
         img_shape = img_list[0].shape[:2][::-1]
         all_corners, all_ids = self.get_corners(img_list)
         all_obj_points = []
@@ -53,10 +54,16 @@ class Calibrator:
                                                                   cv2.CALIB_FIX_K2 |
                                                                   cv2.CALIB_FIX_K3 |
                                                                   cv2.CALIB_ZERO_TANGENT_DIST))
+        if save:
+            time_now = datetime.now().strftime("%Y%m%d-%H%M%S")
+            save_path = Path(filename) if filename \
+                else Path(__file__).parent / 'data' / 'config' / f'intrinsic-{time_now}.npy'
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            np.save(save_path, mtx)
 
         return ret, mtx, dist, rvecs, tvecs
 
-    def compute_turntable_transform(self, tvecs):
+    def compute_turntable_transform(self, tvecs, height, radial, save=True, filename=None):
         points = np.array([t.flatten() for t in tvecs])
         n_points = points.shape[0]
 
@@ -105,6 +112,17 @@ class Calibrator:
         T_cam_to_new[:3, :3] = R_cam_to_new
         T_cam_to_new[:3, 3] = t_cam_to_new.flatten()
 
+        if save:
+            save_dict = {
+                'height':np.array(height),
+                'radial':np.array(radial),
+                'matrix':T_cam_to_new
+            }
+            time_now = datetime.now().strftime("%Y%m%d-%H%M%S")
+            save_path = Path(filename) if filename \
+                else Path(__file__).parent / 'data' / 'config' / f'extrinsic-{time_now}.npy'
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            np.savez(save_path, **save_dict)
         return T_cam_to_new
 
 
@@ -129,9 +147,10 @@ if __name__ == '__main__':
     cali = Calibrator()
     cali_base = Path(__file__).parent / 'data' / 'cali'
     img_paths = list(cali_base.rglob('*.tiff'))
-    save_path = Path(__file__).parent / 'output'
-    save_path.mkdir(parents=True, exist_ok=True)
-
     all_imgs = [np.array(Image.open(img_path).convert('RGB')) for img_path in img_paths]
-
-    ret, mtx, dist, rvecs, tvecs = cali.calibrate(all_imgs)
+    ret, mtx, dist, rvecs, tvecs = cali.calibrate(all_imgs, filename='data/config/intrinsic-ms.npy')
+    cali.compute_turntable_transform(tvecs[:12], 0.07, 0.2, filename='data/config/extrinsic-ms.npz')
+    img_paths = list(cali_base.rglob('*uint8.png'))
+    all_imgs = [np.array(Image.open(img_path).convert('RGB')) for img_path in img_paths]
+    ret, mtx, dist, rvecs, tvecs = cali.calibrate(all_imgs, filename='data/config/intrinsics-rgbd.npy')
+    cali.compute_turntable_transform(tvecs[:12], 0.07, 0.2, filename='data/config/extrinsic-rgbd.npz')
