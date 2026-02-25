@@ -8,6 +8,18 @@ from PIL import Image
 
 class Calibrator:
     def __init__(self):
+        """
+        Initializes the ArUco marker detection system with a predefined grid board
+        configuration and detector.
+
+        Creates an 8x5 grid board of ArUco markers using the DICT_4X4_50 dictionary
+        with specified marker and separator dimensions. The grid board is used for
+        camera calibration and pose estimation. Additionally, initializes an ArUco
+        detector for identifying and locating markers in images.
+
+        :raises: None
+        :rtype: None
+        """
         self.board = cv2.aruco.GridBoard(
             (8, 5),
             0.04,
@@ -17,6 +29,24 @@ class Calibrator:
         self.detector = cv2.aruco.ArucoDetector()
 
     def get_corners(self, img_list: list[np.ndarray]):
+        """
+        Detects and refines ArUco marker corners from a list of images,
+        then saves visualizations of the detected corners.
+
+        This method processes multiple images to detect ArUco markers, refines
+        their corner positions, sorts them by marker ID, and generates debug
+        images showing the detected chessboard corners. The detected corners
+        are organized and returned along with their corresponding marker IDs
+        for further calibration or tracking purposes.
+
+        :param img_list: List of input images containing ArUco markers to be
+            detected and processed
+        :type img_list: list[np.ndarray]
+        :return: Tuple containing two lists - the first list holds detected
+            corner coordinates for each image, and the second list holds
+            corresponding marker IDs for each image
+        :rtype: tuple[list, list]
+        """
         all_corners = []
         all_ids = []
         for img in img_list:
@@ -39,6 +69,27 @@ class Calibrator:
         return all_corners, all_ids
 
     def calibrate(self, img_list: list[np.ndarray], save=True, filename=None):
+        """
+        Performs camera calibration using a list of images containing calibration patterns.
+
+        This method processes multiple images to determine the camera's intrinsic parameters
+        including the camera matrix and distortion coefficients. It detects calibration
+        pattern corners in each image, matches them with object points, and runs OpenCV's
+        camera calibration algorithm with specific flags to fix certain distortion
+        parameters. The calibration results can optionally be saved to a file.
+
+        :param img_list: List of images containing the calibration pattern, each image
+            should be a numpy array with the same dimensions
+        :type img_list: list[np.ndarray]
+        :param save: Whether to save the camera matrix to a file, defaults to True
+        :type save: bool
+        :param filename: Path where the camera matrix should be saved. If None, generates
+            a timestamped filename in the default config directory
+        :type filename: str or Path or None
+        :return: Tuple containing the calibration error (RMS re-projection error), camera
+            matrix, distortion coefficients, rotation vectors, and translation vectors
+        :rtype: tuple
+        """
         img_shape = img_list[0].shape[:2][::-1]
         all_corners, all_ids = self.get_corners(img_list)
         all_obj_points = []
@@ -64,6 +115,24 @@ class Calibrator:
         return ret, mtx, dist, rvecs, tvecs
 
     def compute_turntable_transform(self, tvecs, height, radial, save=True, filename=None):
+        """
+        Compute transformation matrix from camera coordinates to turntable coordinates using SVD-based plane fitting and circle fitting.
+
+        This method takes a set of translation vectors representing camera poses, fits a plane through them using Singular Value Decomposition, determines the circle center on that plane using least squares, and constructs a coordinate system aligned with the turntable geometry. The resulting transformation matrix converts points from camera coordinates to the turntable's natural coordinate system.
+
+        :param tvecs: Collection of translation vectors from camera calibration
+        :type tvecs: array-like
+        :param height: Height parameter of the turntable configuration
+        :type height: float
+        :param radial: Radial parameter of the turntable configuration
+        :type radial: float
+        :param save: Whether to save the computed transformation to disk
+        :type save: bool
+        :param filename: Path where transformation data should be saved; if None, generates timestamp-based filename
+        :type filename: str or None
+        :return: 4x4 homogeneous transformation matrix from camera to turntable coordinates
+        :rtype: numpy.ndarray
+        """
         points = np.array([t.flatten() for t in tvecs])
         n_points = points.shape[0]
 
@@ -114,9 +183,9 @@ class Calibrator:
 
         if save:
             save_dict = {
-                'height':np.array(height),
-                'radial':np.array(radial),
-                'matrix':T_cam_to_new
+                'height': np.array(height),
+                'radial': np.array(radial),
+                'matrix': T_cam_to_new
             }
             time_now = datetime.now().strftime("%Y%m%d-%H%M%S")
             save_path = Path(filename) if filename \
@@ -126,21 +195,7 @@ class Calibrator:
         return T_cam_to_new
 
 
-def draw(img, corners, imgpts):
-    corner = tuple(corners[0].ravel().astype("int32"))
-    imgpts = imgpts.astype("int32")
-    img = cv2.line(img, corner, tuple(imgpts[0].ravel()), (255, 0, 0), 2)
-    img = cv2.line(img, corner, tuple(imgpts[1].ravel()), (0, 255, 0), 2)
-    img = cv2.line(img, corner, tuple(imgpts[2].ravel()), (0, 0, 255), 2)
-    # axis = np.float32([[0.15, 0, 0], [0, 0.15, 0], [0, 0, -0.15]]).reshape(-1, 3)
-    # i = 0
-    # for rvec, tvec, img in zip(rvecs, tvecs, all_imgs):
-    #     zeros, _ = cv2.projectPoints(np.zeros_like(axis), rvec, tvec, mtx, dist)
-    #     imgpts, _ = cv2.projectPoints(axis, rvec, tvec, mtx, dist)
-    #     img = draw(img, zeros, imgpts)
-    #     cv2.imwrite(str(save_path / f'{i:03d}.png'), img)
-    #     i += 1
-    return img
+
 
 
 if __name__ == '__main__':
