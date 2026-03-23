@@ -34,13 +34,21 @@ class Registrator:
     :ivar radial: Reference radial adjustment value from calibration data
     :type radial: float
     """
+
     def __init__(self):
         self.rgbd_intrinsic = np.load('data/config/intrinsic-rgbd.npy')
         self.ms_intrinsic = np.load('data/config/intrinsic-ms.npy')
         rgbd_ex = np.load('data/config/extrinsic-rgbd.npz', allow_pickle=True)
         ms_ex = np.load('data/config/extrinsic-ms.npz', allow_pickle=True)
+        omega = 2 / 180 * np.pi
+        bias_rotarion = np.array([
+            [np.cos(omega), np.sin(omega), 0, 0],
+            [-np.sin(omega), np.cos(omega), 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
         self.rgbd_extrinsic = rgbd_ex['matrix']
-        self.ms_extrinsic = ms_ex['matrix']
+        self.ms_extrinsic = bias_rotarion @ ms_ex['matrix']
         self.height = rgbd_ex['height'].item()
         self.radial = rgbd_ex['radial'].item()
         assert rgbd_ex['height'] == ms_ex['height']
@@ -86,10 +94,11 @@ class Registrator:
             Y = (v - cy) * Z / fy
             pos = np.vstack((X, Y, Z)).T
             pos = np.hstack([pos, np.ones_like(pos[:, 0:1])])
-            pos = (extra_mtx[i] @ self.rgbd_extrinsic @ pos.T).T
+            pos = (extra_mtx[i] @ np.linalg.inv(self.rgbd_extrinsic) @ pos.T).T
             mask = (pos[:, 0] > -0.3) & (pos[:, 0] < 0.3) & \
                    (pos[:, 1] > -0.3) & (pos[:, 1] < 0.3) & \
                    (pos[:, 2] > -0.3) & (pos[:, 2] < 0.5)
+            mask = np.ones_like(mask)
 
             points = pos[mask, :3]
             colors = rgb[i].reshape((-1, 4))[mask, :3] / 255.0
@@ -116,7 +125,7 @@ class Registrator:
                                        ['float'] * 3 + ['uint8'] * 3 + ['float'])
         return pcs
 
-    def export_nerf_json(self, rgb, depth, extra_mtx, save_path):
+    def export_nerf_json(self, rgb, depth, extra_mtx, save_path, ngp_mode=False):
         num = rgb.shape[0]
         save_path.mkdir(parents=True, exist_ok=True)
         img_save_path = save_path / 'images'
@@ -124,11 +133,11 @@ class Registrator:
         for i in range(num):
             img = Image.fromarray(rgb[i])
             img.save(img_save_path / f'{i:03d}.png')
-            j = (i - 1) % num
-            mask = np.sum(rgb[i] / 255.0 - rgb[j] / 255.0, axis=-1) > 0.04
-            mask = (mask * 255.0).astype(np.uint8)
-            Image.fromarray(depth[i]).save(img_save_path / f'depth{i:03d}.png')
-            Image.fromarray(mask).save(img_save_path / f"mask{i:03d}.png")
+            # j = (i - 1) % num
+            # mask = np.sum(rgb[i] / 255.0 - rgb[j] / 255.0, axis=-1) > 0.04
+            # mask = (mask * 255.0).astype(np.uint8)
+            # Image.fromarray(depth[i]).save(img_save_path / f'depth{i:03d}.png')
+            # Image.fromarray(mask).save(img_save_path / f"mask{i:03d}.png")
         h, w = rgb.shape[1:3]
         fx, fy = self.rgbd_intrinsic[0, 0], self.rgbd_intrinsic[1, 1]
         trans = {
@@ -143,18 +152,21 @@ class Registrator:
         }
         frames = []
         for i in range(num):
-            c2w = extra_mtx[i] @ self.rgbd_extrinsic @ np.diag([1, -1, -1, 1])
+            c2w = extra_mtx[i] @ np.linalg.inv(self.rgbd_extrinsic)
+            if ngp_mode:
+                c2w[:3, 1:3] *= -1
             filename = f"./images/{i:03d}.png"
             frames.append({"file_path": filename, "transform_matrix": c2w.tolist(),
-                           "depth_file_path": f"./images/depth{i:03d}.png",
-                           "mask_path": f"./images/mask{i:03d}.png"})
+                           # "depth_file_path": f"./images/depth{i:03d}.png",
+                           # "mask_path": f"./images/mask{i:03d}.png"
+                           })
         trans['frames'] = frames
         with open(save_path / 'transforms.json', 'w', encoding='utf-8') as f:
             json.dump(trans, f)
 
     def project(self, pc, img, extra_mtx_single):
         pcT = np.vstack([pc[:, :3].T, np.ones_like(pc.T[0:1, :])])
-        uv = np.linalg.inv(self.ms_extrinsic) @ np.linalg.inv(extra_mtx_single) @ pcT
+        uv = self.ms_extrinsic @ np.linalg.inv(extra_mtx_single) @ pcT
         uv = self.ms_intrinsic @ (uv[:3, :] / uv[2, :])
         u, v = uv[0, :].astype(np.int64), uv[1, :].astype(np.int64)
         mask = (u > 0) & (v > 0) & (u < 2048) & (v < 1088)
@@ -182,4 +194,5 @@ if __name__ == '__main__':
     save_path = base / 'pc'
 
     pcs = registrator.get_rgb_pc(rgb_np, depth_np, extra_mtx, offset=0.025, save=False)
-    registrator.get_ms_pc(pcs, ms, extra_mtx, save=True, save_path=save_path)
+    # registrator.get_ms_pc(pcs, ms, extra_mtx, save=True, save_path=save_path)
+    registrator.export_nerf_json(rgb_np, depth_np, extra_mtx, Path('nerf'), ngp_mode=False)

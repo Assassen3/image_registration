@@ -134,7 +134,6 @@ class Calibrator:
         :rtype: numpy.ndarray
         """
         points = np.array([t.flatten() for t in tvecs])
-        n_points = points.shape[0]
 
         centroid = np.mean(points, axis=0)
         centered_points = points - centroid
@@ -143,56 +142,27 @@ class Calibrator:
         normal = normal if normal[-1] < 0 else -normal
         z_new = normal / np.linalg.norm(normal)
 
-        p = np.cross(z_new, np.array([1, 0, 0]))
-        p = p / np.linalg.norm(p)
-        q = np.cross(z_new, p)
-
-        u_coords = np.dot(centered_points, p)
-        v_coords = np.dot(centered_points, q)
-
-        # Equation: u^2 + v^2 + D*u + E*v + F = 0
-        # Center (uc, vc) = (-D/2, -E/2)
-        A = np.column_stack((u_coords, v_coords, np.ones(n_points)))
-        b = -(u_coords ** 2 + v_coords ** 2)
-        x, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
-        D, E, F = x
-        uc = -D / 2
-        vc = -E / 2
-
-        origin_new = centroid + uc * p + vc * q
-
-        camera_center = np.array([0.0, 0.0, 0.0])
-        vec_center_to_cam = camera_center - origin_new
-
-        # v_proj = v - (v . z) * z
-        dist_along_normal = np.dot(vec_center_to_cam, z_new)
-        vec_proj = vec_center_to_cam - dist_along_normal * z_new
-        norm_proj = np.linalg.norm(vec_proj)
-        y_new = vec_proj / norm_proj
-        x_new = np.cross(y_new, z_new)
+        x_new = np.cross(z_new, centroid)
         x_new = x_new / np.linalg.norm(x_new)
 
-        R_new_to_cam = np.column_stack((x_new, y_new, z_new))
-        t_new_to_cam = origin_new.reshape(3, 1)
-        R_cam_to_new = R_new_to_cam.T
-        t_cam_to_new = -np.dot(R_cam_to_new, t_new_to_cam)
+        y_new = np.cross(z_new, x_new)
+        y_new = y_new / np.linalg.norm(y_new)
 
-        T_cam_to_new = np.eye(4)
-        T_cam_to_new[:3, :3] = R_cam_to_new
-        T_cam_to_new[:3, 3] = t_cam_to_new.flatten()
+        w2c = np.eye(4)
+        w2c[:3, 0], w2c[:3, 1], w2c[:3, 2], w2c[:3, 3] = x_new, y_new, z_new, centroid
 
         if save:
             save_dict = {
                 'height': np.array(height),
                 'radial': np.array(radial),
-                'matrix': T_cam_to_new
+                'matrix': w2c
             }
             time_now = datetime.now().strftime("%Y%m%d-%H%M%S")
             save_path = Path(filename) if filename \
                 else Path(__file__).parent / 'data' / 'config' / f'extrinsic-{time_now}.npy'
             save_path.parent.mkdir(parents=True, exist_ok=True)
             np.savez(save_path, **save_dict)
-        return T_cam_to_new
+        return w2c
 
 
 
@@ -201,11 +171,11 @@ class Calibrator:
 if __name__ == '__main__':
     cali = Calibrator()
     cali_base = Path(__file__).parent / 'data' / 'cali'
+    img_paths = list(cali_base.rglob('*uint8.png'))
+    all_imgs = [np.array(Image.open(img_path).convert('RGB')) for img_path in img_paths]
+    ret, mtx, dist, rvecs, tvecs = cali.calibrate(all_imgs, filename='data/config/intrinsic-rgbd.npy')
+    cali.compute_turntable_transform(tvecs[:12], 0.07, 0.2, filename='data/config/extrinsic-rgbd.npz')
     img_paths = list(cali_base.rglob('*.tiff'))
     all_imgs = [np.array(Image.open(img_path).convert('RGB')) for img_path in img_paths]
     ret, mtx, dist, rvecs, tvecs = cali.calibrate(all_imgs, filename='data/config/intrinsic-ms.npy')
     cali.compute_turntable_transform(tvecs[:12], 0.07, 0.2, filename='data/config/extrinsic-ms.npz')
-    img_paths = list(cali_base.rglob('*uint8.png'))
-    all_imgs = [np.array(Image.open(img_path).convert('RGB')) for img_path in img_paths]
-    ret, mtx, dist, rvecs, tvecs = cali.calibrate(all_imgs, filename='data/config/intrinsics-rgbd.npy')
-    cali.compute_turntable_transform(tvecs[:12], 0.07, 0.2, filename='data/config/extrinsic-rgbd.npz')
