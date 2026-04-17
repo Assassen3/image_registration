@@ -8,6 +8,15 @@ from PIL import Image
 import cpp_module
 
 
+def compress_ms_image(ms: np.ndarray) -> np.ndarray:
+    ms_shape = ms.shape
+    ms_reshape = ms[:ms_shape[0] // 5 * 5, :ms_shape[1] // 5 * 5].copy()
+    ms_reshape = ms_reshape.reshape(ms_shape[0] // 5, 5, ms_shape[1] // 5, 5)
+    ms_reshape = ms_reshape.transpose(0, 2, 1, 3)
+    ms_reshape = ms_reshape.reshape(ms_shape[0] // 5, ms_shape[1] // 5, 25)
+    return ms_reshape
+
+
 class Registrator:
     """
     Handles registration and transformation of RGBD and multispectral sensor data.
@@ -54,6 +63,12 @@ class Registrator:
         assert rgbd_ex['height'] == ms_ex['height']
         assert rgbd_ex['radial'] == ms_ex['radial']
 
+    @property
+    def compress_ms_intrinsic(self) -> np.ndarray:
+        compress_ms_intrinsic = self.ms_intrinsic.copy()
+        compress_ms_intrinsic[:2, :] /= 5.0
+        return compress_ms_intrinsic
+
     def get_extra_transform(self, file: Path | str):
         config = pd.read_excel(file)
         num = config.shape[0]
@@ -97,8 +112,7 @@ class Registrator:
             pos = (extra_mtx[i] @ np.linalg.inv(self.rgbd_extrinsic) @ pos.T).T
             mask = (pos[:, 0] > -0.3) & (pos[:, 0] < 0.3) & \
                    (pos[:, 1] > -0.3) & (pos[:, 1] < 0.3) & \
-                   (pos[:, 2] > -0.3) & (pos[:, 2] < 0.5)
-            mask = np.ones_like(mask)
+                   (pos[:, 2] > 0.01) & (pos[:, 2] < 0.5)
 
             points = pos[mask, :3]
             colors = rgb[i].reshape((-1, 4))[mask, :3] / 255.0
@@ -115,14 +129,14 @@ class Registrator:
         num = len(rgb_pcs)
         pcs = []
         for i in range(num):
-            ms_color, mask = self.project(rgb_pcs[i], ms[i], extra_mtx[i])
+            ms_color, mask = self.project(rgb_pcs[i], compress_ms_image(ms[i]), extra_mtx[i])
             pc = np.hstack([rgb_pcs[i][:, :3][mask], (rgb_pcs[i][:, 3:][mask] * 255).astype(np.uint8), ms_color])
             pcs.append(pc)
             if save:
                 save_path.mkdir(parents=True, exist_ok=True)
                 cpp_module.save_points(str(save_path / f'{i + 1}.ply'), pc,
-                                       ['x', 'y', 'z', 'Red', 'Green', 'Blue', 'MS'],
-                                       ['float'] * 3 + ['uint8'] * 3 + ['float'])
+                                       ['x', 'y', 'z', 'Red', 'Green', 'Blue'] + [f'band_{i + 1}' for i in range(25)],
+                                       ['float'] * 3 + ['uint8'] * 3 + ['float'] * 25)
         return pcs
 
     def export_nerf_json(self, rgb, depth, extra_mtx, save_path, ngp_mode=False):
@@ -167,13 +181,13 @@ class Registrator:
     def project(self, pc, img, extra_mtx_single):
         pcT = np.vstack([pc[:, :3].T, np.ones_like(pc.T[0:1, :])])
         uv = self.ms_extrinsic @ np.linalg.inv(extra_mtx_single) @ pcT
-        uv = self.ms_intrinsic @ (uv[:3, :] / uv[2, :])
+        uv = self.compress_ms_intrinsic @ (uv[:3, :] / uv[2, :])
         u, v = uv[0, :].astype(np.int64), uv[1, :].astype(np.int64)
-        mask = (u > 0) & (v > 0) & (u < 2048) & (v < 1088)
+        mask = (u > 0) & (v > 0) & (u < 409) & (v < 217)
         u, v = u[mask], v[mask]
-        ms_color = img[v, u] / 255.0
+        ms_color = img[v, u, :] / 255.0
 
-        return ms_color[:, np.newaxis], mask
+        return ms_color, mask
 
 
 if __name__ == '__main__':
@@ -194,5 +208,5 @@ if __name__ == '__main__':
     save_path = base / 'pc'
 
     pcs = registrator.get_rgb_pc(rgb_np, depth_np, extra_mtx, offset=0.025, save=False)
-    # registrator.get_ms_pc(pcs, ms, extra_mtx, save=True, save_path=save_path)
-    registrator.export_nerf_json(rgb_np, depth_np, extra_mtx, Path('nerf'), ngp_mode=False)
+    registrator.get_ms_pc(pcs, ms, extra_mtx, save=True, save_path=save_path)
+    # registrator.export_nerf_json(rgb_np, depth_np, extra_mtx, Path('nerf'), ngp_mode=False)
